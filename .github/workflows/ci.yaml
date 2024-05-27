@@ -1,6 +1,10 @@
 name: CI
 
 on:
+  workflow_call:
+    secrets:
+      UBUNTU_PRO_TOKEN:
+        required: true
   workflow_dispatch:
   schedule:
     # execute the action nightly
@@ -23,6 +27,71 @@ jobs:
         # to avoid shadow clone which would impact the version generation
         # See `scripts/gen-version.sh`
         fetch-depth: "0"
+
+    - name: Generate keys and allow permissions (for e2e tests)
+      working-directory: js/tests/e2e
+      run: |
+        set -x
+        openssl req -x509 -newkey rsa:4096 -keyout anbox-cloud.key -out anbox-cloud.crt -days 365 -nodes -subj "/C=GB/ST=London/L=London/O=Global Security/OU=IT Department/CN=example.com"
+
+    - name: Install microbox (for e2e tests)
+      run: |
+        set -x
+        sudo pro attach ${{ secrets.UBUNTU_PRO_TOKEN }}
+        sudo pro enable --access-only anbox-cloud
+        sudo apt update
+        sudo apt install -y anbox-modules-dkms-122 linux-generic-hwe-22.04
+        sudo snap install --edge microbox
+        sudo snap set microbox ams.test-mode=true
+        yes '' | sudo microbox init
+
+    - name: Install LXD (for e2e tests)
+      uses: canonical/setup-lxd@v0.1.1
+      with:
+        channel: 5.0/stable
+
+    - name: Configure LXD (for e2e tests)
+      shell: bash
+      run: |
+        set -x
+        sudo lxc config set core.https_address "[::]:8443"
+        sudo lxc config trust add --name=microbox /var/snap/microbox/common/ams/lxd/client.crt
+        sudo lxc config set cluster.https_address "127.0.0.1"
+        sudo lxc cluster enable local
+        sudo lxc storage create local dir
+
+    - name: Configure AMC (for e2e tests)
+      working-directory: js/tests/e2e
+      run: |
+        set -x
+        sudo microbox.amc node add --unmanaged --storage-pool=local local 127.0.0.1
+        sudo cp anbox-cloud.crt /root/client.crt
+        sudo microbox.amc config trust add /root/client.crt
+        sudo microbox.amc config set registry.mode manual
+        sudo microbox.amc config set images.version_lockstep false
+        sudo microbox.amc config set images.url https://images.anbox-cloud.io/stable/
+        # NOTE We need to hide the token here to not accidentially leak credentials
+        set +x
+        sudo microbox.amc config set images.auth "bearer:$(sudo cat /var/lib/ubuntu-advantage/private/machine-token.json | jq -r '.resourceTokens[] | select(.type=="anbox-images").token')"
+        set -x
+        sudo microbox.amc image add jammy:android13:amd64 jammy:android13:amd64
+        sudo microbox.amc image sync $(sudo microbox.amc image ls | grep jammy:android13:amd64 | grep "| container " | awk '{ print $2 }')
+
+    - name: Configure env variables (for e2e tests)
+      shell: bash
+      run: |
+        set -x
+        touch .env.local
+        echo "AMS_API_CERTIFICATE=anbox-cloud.crt" >> .env.local
+        echo "AMS_API_CERTIFICATE_KEY=anbox-cloud.key" >> .env.local
+        echo "AMS_API_URL=$(sudo cat /var/snap/microbox/common/dashboard/config.yaml | grep AMS_API_URL | cut -d ' ' -f2)" >> .env.local
+        echo "ASG_API_URL=$(sudo cat /var/snap/microbox/common/dashboard/config.yaml | grep ASG_API_URL | cut -d ' ' -f2)" >> .env.local
+        echo "ASG_API_TOKEN=$(sudo cat /var/snap/microbox/common/dashboard/config.yaml | grep ASG_API_TOKEN | cut -d ' ' -f2)" >> .env.local
+
+    - name: Install Node (for e2e tests)
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
 
     - name: Get version
       id: get-version

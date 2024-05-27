@@ -1,6 +1,6 @@
-#!/bin/sh -e
+#!/bin/sh -ex
 #
-# Copyright 2021 Canonical Ltd.
+# Copyright 2024 Canonical Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cd tests/unit
-$PWD/run-tests.sh $@
-cd ../e2e
-$PWD/run-tests.sh $@
+npm install
+npx playwright install --with-deps
+npx playwright test
