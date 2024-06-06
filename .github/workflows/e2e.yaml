@@ -1,18 +1,7 @@
 name: E2e tests
 
 on:
-  workflow_call:
-    secrets:
-      UBUNTU_PRO_TOKEN:
-        required: true
-  workflow_dispatch:
-  schedule:
-    # execute the action nightly
-    - cron: '0 10 * * *'
-  push:
-    branches:
-      - '**'
-  pull_request:
+  pull_request_target:
     branches:
       - '**'
 
