@@ -60,6 +60,7 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
+        hasTouch: true,
       },
     },
 
@@ -67,6 +68,7 @@ export default defineConfig({
       name: "firefox",
       use: {
         ...devices["Desktop Firefox"],
+        hasTouch: true,
       },
     },
   ],
